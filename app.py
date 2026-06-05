@@ -430,7 +430,7 @@ with st.sidebar:
                                  "Case report", "Methods / technical note"])
     st.divider()
     build_btn = st.button("🧠 Build search string", type="primary",
-                           use_container_width=True)
+                           use_container_width=True)  # button param, not deprecated
     st.caption(
         "**APIs**  \n"
         "[PubMed E-utils](https://www.ncbi.nlm.nih.gov/books/NBK25500/) · "
@@ -586,13 +586,13 @@ if (st.session_state.pm_journals is not None or
             # for now show plain table with bar chart
             st.dataframe(
                 df_pm,
-                use_container_width=True,
+                width="stretch",
                 height=500,
                 column_config={
                     "Journal":      st.column_config.TextColumn(width="large"),
                     "PubMed count": st.column_config.ProgressColumn(
                         format="%d", min_value=0,
-                        max_value=df_pm["PubMed count"].max() or 1,
+                        max_value=int(df_pm["PubMed count"].max() or 1),
                         width="medium",
                     ),
                 },
@@ -629,7 +629,7 @@ if (st.session_state.pm_journals is not None or
             max_conf = df_jane["Confidence (%)"].max() if "Confidence (%)" in df_jane.columns else 100
             st.dataframe(
                 df_jane[display_cols],
-                use_container_width=True,
+                width="stretch",
                 height=500,
                 column_config={
                     "Journal":           st.column_config.TextColumn(width="large"),
@@ -688,7 +688,7 @@ if (st.session_state.pm_journals is not None or
             df_oa.index = range(1, len(df_oa) + 1)
             st.dataframe(
                 df_oa,
-                use_container_width=True,
+                width="stretch",
                 height=500,
                 column_config={
                     "Journal":   st.column_config.TextColumn(width="large"),
@@ -830,7 +830,7 @@ if (st.session_state.pm_journals is not None or
 
             df_m = pd.DataFrame(rows)
             st.dataframe(
-                df_m, use_container_width=True, height=560, hide_index=True,
+                df_m, width="stretch", height=560, hide_index=True,
                 column_config={
                     "#":         st.column_config.NumberColumn(width=40),
                     "Journal":   st.column_config.TextColumn(width="large"),
@@ -844,7 +844,7 @@ if (st.session_state.pm_journals is not None or
                     "APC (USD)": st.column_config.NumberColumn(format="$%d", width="small"),
                     "PubMed n":  st.column_config.ProgressColumn(
                         format="%d", min_value=0,
-                        max_value=max((r["PubMed n"] for r in rows), default=1) or 1,
+                        max_value=int(max((r["PubMed n"] for r in rows), default=1) or 1),
                         width="medium",
                     ),
                     "Jane %":    st.column_config.ProgressColumn(
