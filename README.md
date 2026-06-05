@@ -1,143 +1,127 @@
-# Journal Finder v2
+# Journal Finder v3
 
-LLM-powered journal discovery tool for academic manuscripts.  
-Finds the 15–20 most relevant journals for your paper using live OpenAlex + PubMed data,
-annotated and ranked by Groq (Llama 3.3 70B).
+LLM-powered journal discovery using three parallel engines:
+**OpenAlex** + **PubMed** + **Jane**, enriched with **Scimago SJR** data.
 
 ---
 
-## Quick start
+## What's new in v3 vs v2
 
-### 1. Get a free Groq API key
-1. Go to https://console.groq.com
-2. Sign up (email or Google, no credit card)
-3. Create → API Keys → New key
-4. Copy the key (starts with `gsk_…`)
+| Problem in v2 | Fix in v3 |
+|---|---|
+| PubMed returned 0 hits | LLM prompt now explicitly forbids `[Journal]` and date tags in the query; PubMed query is separated from journal filtering |
+| No indexation info | Scimago CSV bundled locally → SJR score, Scopus quartile, H-index, subject categories |
+| OpenAlex `indices` field empty | Dropped — replaced with `is_in_doaj` (reliable) + Scimago CSV for Scopus coverage |
+| Single discovery engine | Three parallel engines (OpenAlex, PubMed via Groq-built query, Jane) merged with score weighting |
 
-### 2. Add your key to the app
-Open `app.py` and find line 18:
+---
+
+## Setup — 4 steps
+
+### Step 1: Groq API key (free)
+1. Go to https://console.groq.com → sign up (email or Google, no credit card)
+2. Create → API Keys → New key (starts with `gsk_…`)
+3. Open `app.py`, find line 18, replace the placeholder:
 ```python
-GROQ_API_KEY = "YOUR_GROQ_API_KEY_HERE"
+GROQ_API_KEY = "gsk_your_key_here"
 ```
-Replace the placeholder with your actual key and save.
 
-### 3. Run the app
+### Step 2: Scimago CSV (one-time download, ~5 MB)
+1. Go to https://www.scimagojr.com/journalrank.php
+2. Scroll to bottom → click the **Download** button → save as CSV
+3. Rename the file to `scimagojr_2024.csv`
+4. Place it in the **same folder as `app.py`**
 
-**Option A — Streamlit Community Cloud (free, recommended, no local install)**
-1. Push this folder to a public GitHub repository.
-2. Go to https://share.streamlit.io → sign in → New app.
-3. Select repo / branch `main` / file `app.py` → Deploy.
-4. Done — permanent public URL, runs in the cloud.
+The CSV is semicolon-delimited with columns:
+`Rank;Sourceid;Title;Type;Issn;Publisher;Open Access;SJR;SJR Best Quartile;H index;...;Categories`
 
-**Option B — Local on Windows 11 without admin rights**
-1. If Python isn't already on your PATH, download **WinPython** from
-   https://winpython.github.io/ — unzip anywhere, no install needed.
-2. Double-click `run_local.bat`.
-   First run installs streamlit, requests, pandas into your user profile.
-3. App opens at http://localhost:8501.
+The app reads it at startup and looks up each discovered journal by ISSN.
+Update once per year when Scimago releases new data.
+
+### Step 3: (Optional) NCBI API key — speeds up PubMed queries
+Get a free key at https://www.ncbi.nlm.nih.gov/account/
+Add to `app.py` line 19:
+```python
+NCBI_API_KEY = "your_ncbi_key_here"
+```
+Raises PubMed rate limit from 3 → 10 req/s, reducing query time from ~45 s → ~15 s.
+
+### Step 4: Run
+
+**Option A — Streamlit Community Cloud (free, public, no local install)**
+1. Push this folder to a public GitHub repo
+2. Go to https://share.streamlit.io → New app → select repo/file → Deploy
+3. Done — permanent URL, no maintenance
+
+**Option B — Local, Windows 11, no admin rights**
+1. Download WinPython from https://winpython.github.io/ (unzip anywhere)
+2. Double-click `run_local.bat`
+3. Opens at http://localhost:8501
 
 ---
 
 ## How it works
 
 ```
-User input (keywords + optional title/abstract)
-        │
-        ▼
-[1] Groq LLM
-    → builds calibrated PubMed query (MeSH + free-text, not too narrow/wide)
-    → builds short OpenAlex query
-    → extracts 4-6 core concepts
-        │
-        ▼
-[2] OpenAlex API  (free, no key)
-    /works?search=<oa_query>&group_by=primary_location.source.id
-    → top-N journals ranked by article count in the query window
-    → enriches each with: IF proxy, OA status, APC, Scopus/WoS flags, publisher
-        │
-        ▼
-[3] PubMed E-utilities  (free, optional NCBI key for speed)
-    → validates article count per journal using the LLM-built PubMed query
-    → generates direct PubMed, WoS, Scopus search links per journal
-        │
-        ▼
-[4] Groq LLM (second call)
-    → reads journal list + metadata
-    → annotates each: scope fit, red flags, APC note, submission tier
-    → outputs ranked JSON
-        │
-        ▼
-[5] Streamlit UI
-    → sortable table + per-journal expanders with live links
-    → CSV export
+User: keywords + optional title/abstract
+         │
+         ▼
+[1] Groq LLM — calibrated search strategy
+    ├── pubmed_query  (MeSH + free-text, no journal filters, no date filters)
+    ├── openalex_query  (4–6 word phrase)
+    └── jane_text  (1–3 natural language sentences)
+         │
+         ├─── [2a] OpenAlex works?search=<oa_query>&group_by=source
+         │         → top-N journals by article count + OA/APC/DOAJ metadata
+         │
+         ├─── [2b] Jane suggestions.php?findJournals&text=<jane_text>
+         │         → top-20 journals by Medline semantic similarity + confidence
+         │
+         ▼
+[3] Merge & deduplicate OpenAlex + Jane results
+    (weighted score: 60% OA count + 40% Jane confidence)
+         │
+         ▼
+[4] Scimago CSV lookup by ISSN
+    → SJR score, Scopus quartile, H-index, subject categories
+         │
+         ▼
+[5] PubMed E-utilities — per-journal article count validation
+    → Uses the Groq-built MeSH query filtered to each journal
+         │
+         ▼
+[6] Groq LLM — annotates each journal
+    → scope fit, tier (Reach/Target/Safety), red flags, APC note
+         │
+         ▼
+[7] Streamlit UI — sortable table + per-journal links + CSV download
 ```
 
 ---
 
-## APIs used
+## Data source comparison
 
-| API | Key needed | Free limits | Used for |
-|---|---|---|---|
-| Groq | Yes (free tier) | 30 RPM / 500K TPD | Search strategy + journal annotation |
-| OpenAlex | No | 100K req/day | Journal discovery + metadata |
-| PubMed E-utilities | No (optional) | 3 req/s (10 with key) | Article count validation |
-
----
-
-## Optional: NCBI API key (faster PubMed queries)
-Get a free key at https://www.ncbi.nlm.nih.gov/account/
-Add it to `app.py` line 19:
-```python
-NCBI_API_KEY = "your_ncbi_key_here"
-```
-This raises the PubMed rate limit from 3 to 10 requests/second, reducing search time from ~45s to ~15s for 15 journals.
-
----
-
-## Interpreting results
-
-**Submission tiers**
-- 🔵 **Reach** — high IF or selective journal; worth trying if the paper is strong
-- 🟢 **Target** — best fit overall; submit here first
-- 🟡 **Safety** — lower IF or less selective; reliable fallback
-
-**Scope fit**
-- 🟢 **Excellent** — journal explicitly covers this topic
-- 🔵 **Good** — strong thematic overlap
-- 🟡 **Moderate** — adjacent field, framing adjustment needed
-- 🔴 **Weak** — included for context only; not recommended
-
-**OA count (OpenAlex)** — number of open-access articles matching the query in that journal
-over the selected time window. A rough proxy for how actively the journal publishes in your niche.
-
-**PubMed hits** — article count using the LLM-built PubMed query filtered to the journal.
-More precise than the OpenAlex count because it uses MeSH terms.
-
----
-
-## Files
-
-```
-journal_finder_v2/
-├── app.py              Main Streamlit application (~300 lines)
-├── requirements.txt    Python dependencies (3 packages)
-├── run_local.bat       Windows launcher, no admin rights needed
-└── README.md           This file
-```
+| Column | Source | Key for submission decisions |
+|---|---|---|
+| SJR / Q (Scopus) | Scimago CSV | Tells you Scopus indexation + quartile |
+| IF proxy | OpenAlex 2yr citedness | Rough IF equivalent (not JCR) |
+| H-index | Scimago CSV | Journal prestige |
+| OA / DOAJ | OpenAlex | Whether free to publish / read |
+| APC (USD) | OpenAlex | Actual APC if known |
+| OA hits (OA) | OpenAlex group_by | How many open-access papers on your topic |
+| PubMed hits | PubMed E-utilities | MEDLINE-validated count with MeSH query |
+| Jane conf. % | Jane biosemantics | Semantic similarity to your text (0–100%) |
 
 ---
 
 ## Troubleshooting
 
-**"Groq error: 401"** → Check your API key in `app.py` line 18.
+**PubMed hits = -1** → timeout or rate limit; re-run, or add an NCBI API key.
 
-**"No journals found"** → Try broader keywords, or increase the publication window.
+**Jane returns 0 results** → Jane's server may be temporarily slow; the link at the bottom of results opens Jane directly in your browser.
 
-**PubMed hits show -1** → Network timeout or rate limit hit; re-run.
+**Scimago columns empty** → `scimagojr_2024.csv` not found next to `app.py`. Download and rename as described above.
 
-**Streamlit not found after running bat** → The pip user install may not be on PATH.
-Open a WinPython Command Prompt and run:
-```
-pip install streamlit requests pandas
-streamlit run app.py
-```
+**Groq error 401** → Check API key in `app.py` line 18.
+
+**No journals found** → Try broader keywords or increase the publication window.
