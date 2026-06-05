@@ -27,7 +27,7 @@ APIs used (all free, no subscription keys needed except Groq):
 # ── CONFIGURATION ─────────────────────────────────────────────────────────────
 GROQ_API_KEY = "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"   # console.groq.com → free, no credit card
 NCBI_API_KEY = "297913872cccbeaf7b2e626307a38ede7d09"                          # optional: ncbi.nlm.nih.gov/account/
-SCIMAGO_CSV  = "scimagojr_2025.csv"       # path relative to app.py; see README
+SCIMAGO_CSV  = "scimagojr_2024.csv"       # path relative to app.py; see README
 # ─────────────────────────────────────────────────────────────────────────────
 
 import json, re, time, urllib.parse, os
